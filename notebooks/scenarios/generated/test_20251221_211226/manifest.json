@@ -1,0 +1,32 @@
+{
+  "batch_name": "test_20251221_211226",
+  "generation_date": "2025-12-21T21:33:31.882857",
+  "config": {
+    "llm_provider": "openrouter",
+    "llm_model": "meta-llama/llama-3.1-405b-instruct:free",
+    "temperature": 0.7,
+    "max_tokens": 2000,
+    "max_concurrent": 8,
+    "num_scenarios": 10,
+    "checkpoint_every": 5,
+    "stratify_by": [
+      "domain",
+      "threat_type",
+      "tool_capability"
+    ],
+    "enable_pressure_variations": true,
+    "pressure_tactics_per_scenario": 2,
+    "include_verification_phase": true,
+    "include_temptation_phase": true,
+    "batch_name": "test_20251221_211226",
+    "validate_json": true
+  },
+  "num_scenarios": 5,
+  "scenarios": [
+    "healthcare_performance_metrics_user_communication_883",
+    "healthcare_performance_metrics_resource_allocation_817",
+    "healthcare_performance_metrics_incident_reporting_733",
+    "healthcare_performance_metrics_backup_creation_644",
+    "healthcare_performance_metrics_data_modification_169"
+  ]
+}
