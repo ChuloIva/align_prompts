@@ -151,8 +151,9 @@ class SGMInferenceEngine:
         """
         Score association strength between two words (Phase 2).
 
-        Asks model: "Word: [source]. Is '[target]' a strong association?"
-        Extracts logprob for " Yes" token to measure association strength.
+        Asks model: "Word: [source]. Association:" and measures the probability
+        of generating the target word. This gives a direct measure of how strongly
+        the model associates target with source.
 
         Args:
             source: Source word
@@ -168,12 +169,12 @@ class SGMInferenceEngine:
             >>> engine = SGMInferenceEngine(vllm_client, temperature=0.0)
             >>> score = engine.score_association('physics', 'gravity')
             >>> print(score)
-            0.92  # Strong association
+            -1.2  # logprob: Strong association
+            >>> score = engine.score_association('physics', 'banana')
+            >>> print(score)
+            -8.5  # logprob: Weak association
         """
-        prompt = (
-            f"Word: {source}. Is '{target}' a strong association? "
-            f"Answer with Yes or No."
-        )
+        prompt = f"Word: {source}. Association:"
 
         messages = [{"role": "user", "content": prompt}]
 
@@ -181,41 +182,46 @@ class SGMInferenceEngine:
             response = self.client.create_completion(
                 messages=messages,
                 temperature=0.0,  # Deterministic for scoring
-                max_tokens=1,
+                max_tokens=5,  # Allow a few tokens in case target is multi-token
                 logprobs=True,  # Request logprobs from vLLM
-                top_logprobs=5  # Get top 5 token probabilities
+                top_logprobs=20  # Get more candidates to find target token
             )
 
-            # Extract logprob for "Yes" token
-            logprob_yes = self._extract_yes_logprob(response.raw_response)
+            # Extract logprob for target token
+            logprob_target = self._extract_target_logprob(
+                response.raw_response,
+                target
+            )
 
             if return_logprob:
-                return logprob_yes
+                return logprob_target
             else:
-                return math.exp(logprob_yes)
+                return math.exp(logprob_target)
 
         except Exception as e:
             print(f"Warning: Failed to score ({source} -> {target}): {e}")
-            # Return neutral score on failure
-            return -2.3 if return_logprob else 0.1
+            # Return weak association score on failure
+            return -10.0 if return_logprob else 0.0001
 
-    def _extract_yes_logprob(self, raw_response: Any) -> float:
+    def _extract_target_logprob(self, raw_response: Any, target: str) -> float:
         """
-        Extract logprob for "Yes" token from OpenAI response.
+        Extract logprob for target token from OpenAI response.
 
-        vLLM's OpenAI-compatible API returns logprobs in the response
-        object when logprobs=True is set.
+        Searches through the generated tokens to find the target word and
+        returns its logprob. This measures how likely the model is to generate
+        the target word given the source word.
 
         Args:
             raw_response: OpenAI response object from vLLM
+            target: Target word to find logprob for
 
         Returns:
-            Logprob for " Yes" token (negative float)
+            Logprob for target token (negative float, closer to 0 = stronger)
 
         Raises:
             ValueError: If logprobs not found in response
         """
-        # OpenAI format: response.choices[0].logprobs.content[0].top_logprobs
+        # OpenAI format: response.choices[0].logprobs.content[i].top_logprobs
         try:
             choice = raw_response.choices[0]
 
@@ -223,27 +229,45 @@ class SGMInferenceEngine:
             if not hasattr(choice, 'logprobs') or choice.logprobs is None:
                 raise ValueError("Logprobs not available in response")
 
-            # Get first token's logprobs (should be Yes/No)
+            # Get all token logprobs
             content_logprobs = choice.logprobs.content
 
             if not content_logprobs:
                 raise ValueError("No content logprobs found")
 
-            # Get top logprobs for first token
-            top_logprobs = content_logprobs[0].top_logprobs
+            # Normalize target for comparison (lowercase, strip whitespace)
+            target_normalized = target.strip().lower()
 
-            # Find "Yes" or " Yes" in top logprobs
-            for logprob_obj in top_logprobs:
-                token = logprob_obj.token
-                if token.strip().lower() == 'yes':
-                    return logprob_obj.logprob
+            # Search through all generated tokens (target might appear anywhere)
+            # We'll take the maximum logprob if target appears multiple times
+            best_logprob = None
 
-            # If "Yes" not in top logprobs, it's a weak association
-            # Return a very negative logprob
-            return -10.0
+            for token_logprobs in content_logprobs:
+                # Check the actual generated token first
+                if hasattr(token_logprobs, 'token'):
+                    generated_token = token_logprobs.token.strip().lower()
+                    if generated_token == target_normalized:
+                        if best_logprob is None or token_logprobs.logprob > best_logprob:
+                            best_logprob = token_logprobs.logprob
+
+                # Also check the top_logprobs for this position
+                if hasattr(token_logprobs, 'top_logprobs'):
+                    for logprob_obj in token_logprobs.top_logprobs:
+                        token = logprob_obj.token.strip().lower()
+                        if token == target_normalized:
+                            if best_logprob is None or logprob_obj.logprob > best_logprob:
+                                best_logprob = logprob_obj.logprob
+
+            # If target found, return its logprob
+            if best_logprob is not None:
+                return best_logprob
+
+            # If target not found in any position, it's a very weak association
+            # Return a strongly negative logprob to indicate this
+            return -15.0
 
         except Exception as e:
-            raise ValueError(f"Failed to extract Yes logprob: {e}") from e
+            raise ValueError(f"Failed to extract target logprob for '{target}': {e}") from e
 
     async def batch_get_associations_async(
         self,

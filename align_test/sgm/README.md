@@ -91,15 +91,21 @@ See `notebooks/semantic_gravity_mapping.ipynb` for a complete interactive workfl
 
 ### Phase 2: Logprob Scoring
 
-**Goal:** Assign weights to edges using logprob extraction
+**Goal:** Assign weights to edges using direct generation probability
 
 - For each edge (A, B), prompt:
   ```
-  "Word: A. Is 'B' a strong association? Yes or No"
+  "Word: A. Association:"
   ```
-- Extract logprob for "Yes" token
+- Extract logprob for token 'B' being generated
+- This measures how likely the model is to generate B when prompted with A
 - Weight = e^(logprob) ∈ [0, 1]
 - Checkpoint every 2000 edges
+
+**Advantages over binary Yes/No:**
+- Much better discrimination (avoids 95% clustering at high confidence)
+- Direct measure of association strength from model's probability distribution
+- More nuanced weights that better capture semantic relationships
 
 **Output:** Weighted directed graph
 

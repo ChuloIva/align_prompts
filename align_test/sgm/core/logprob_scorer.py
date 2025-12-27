@@ -1,14 +1,19 @@
 """
 Logprob Scorer for Semantic Gravity Mapping - Phase 2.
 
-Assigns weights to graph edges using logprob extraction.
-For each edge (A, B), asks the model:
-  "Word: A. Is 'B' a strong association? Yes or No"
+Assigns weights to graph edges using direct generation probability.
+For each edge (A, B), prompts the model:
+  "Word: A. Association:"
 
-Extracts logprob for "Yes" token to measure association strength.
+Extracts logprob for token 'B' being generated to measure association strength.
+This gives a direct measure of how strongly the model associates B with A.
+
 Weight = e^(logprob), where:
 - High logprob (close to 0) = Strong association (weight ~ 1.0)
 - Low logprob (very negative) = Weak association (weight ~ 0.0)
+
+This approach provides much better discrimination than binary Yes/No questions,
+as it captures the model's natural probability distribution over associations.
 """
 
 import math
