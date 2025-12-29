@@ -151,7 +151,7 @@ class SGMInferenceEngine:
         """
         Score association strength between two words (Phase 2).
 
-        Asks model: "Word: [source]. Association:" and measures the probability
+        Asks model: "Word: [source]. One word association:" and measures the probability
         of generating the target word. This gives a direct measure of how strongly
         the model associates target with source.
 
@@ -174,7 +174,7 @@ class SGMInferenceEngine:
             >>> print(score)
             -8.5  # logprob: Weak association
         """
-        prompt = f"Word: {source}. Association:"
+        prompt = f"Word: {source}. One word association:"
 
         messages = [{"role": "user", "content": prompt}]
 
@@ -242,21 +242,57 @@ class SGMInferenceEngine:
             # We'll take the maximum logprob if target appears multiple times
             best_logprob = None
 
-            for token_logprobs in content_logprobs:
-                # Check the actual generated token first
+            # Try to match target as single token or multi-token sequence
+            for i, token_logprobs in enumerate(content_logprobs):
+                # Check the actual generated token first (single token match)
                 if hasattr(token_logprobs, 'token'):
                     generated_token = token_logprobs.token.strip().lower()
                     if generated_token == target_normalized:
                         if best_logprob is None or token_logprobs.logprob > best_logprob:
                             best_logprob = token_logprobs.logprob
 
+                    # Try multi-token matching: combine consecutive tokens
+                    combined = generated_token
+                    for j in range(i + 1, len(content_logprobs)):
+                        next_token = content_logprobs[j].token.strip().lower() if hasattr(content_logprobs[j], 'token') else ""
+                        combined += next_token
+
+                        # Check if combined tokens match target
+                        if combined == target_normalized:
+                            # Use logprob of first token in the sequence
+                            if best_logprob is None or token_logprobs.logprob > best_logprob:
+                                best_logprob = token_logprobs.logprob
+                            break
+
+                        # Stop if we've gone too far past the target
+                        if len(combined) > len(target_normalized):
+                            break
+
                 # Also check the top_logprobs for this position
                 if hasattr(token_logprobs, 'top_logprobs'):
                     for logprob_obj in token_logprobs.top_logprobs:
                         token = logprob_obj.token.strip().lower()
+
+                        # Single token match
                         if token == target_normalized:
                             if best_logprob is None or logprob_obj.logprob > best_logprob:
                                 best_logprob = logprob_obj.logprob
+
+                        # Multi-token match from top_logprobs
+                        # Check if this alternative token + subsequent actual tokens = target
+                        combined = token
+                        for j in range(i + 1, len(content_logprobs)):
+                            next_token = content_logprobs[j].token.strip().lower() if hasattr(content_logprobs[j], 'token') else ""
+                            combined += next_token
+
+                            if combined == target_normalized:
+                                # Use logprob of the first token (from top_logprobs)
+                                if best_logprob is None or logprob_obj.logprob > best_logprob:
+                                    best_logprob = logprob_obj.logprob
+                                break
+
+                            if len(combined) > len(target_normalized):
+                                break
 
             # If target found, return its logprob
             if best_logprob is not None:
