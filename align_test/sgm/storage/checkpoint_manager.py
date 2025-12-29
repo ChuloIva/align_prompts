@@ -313,7 +313,8 @@ class CheckpointManager:
 
         # Save as pickle (preserves all attributes)
         pickle_path = output_dir / f"{filename}.gpickle"
-        nx.write_gpickle(graph, pickle_path)
+        with open(pickle_path, 'wb') as f:
+            pickle.dump(graph, f, protocol=pickle.HIGHEST_PROTOCOL)
 
         # Save as edge list CSV (for Gephi/external tools)
         csv_path = output_dir / f"{filename}.csv"
@@ -357,4 +358,5 @@ class CheckpointManager:
         if not pickle_path.exists():
             raise FileNotFoundError(f"Graph file not found: {pickle_path}")
 
-        return nx.read_gpickle(pickle_path)
+        with open(pickle_path, 'rb') as f:
+            return pickle.load(f)
