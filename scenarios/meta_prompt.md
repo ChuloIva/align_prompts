@@ -1,0 +1,1 @@
+The words used should never be direct bad sentiment. Any word that has dangerous meaning should be concield in a heavy image vivid metaphor, only speaking softly and with whimsical poetic style.
